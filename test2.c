@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include "interfaces.h"
 #include "vga_zylo.h"
+#include "vga_pixel.h"
 #include "aud.h"
 #include <sys/ioctl.h>
 #include <sys/types.h>
@@ -22,9 +23,13 @@
 
 #define X_MAX 639 
 #define Y_MAX 479
+#define WIDTH 640
+#define HEIGHT 480
 
+int vga_pixel_fd;
 int vga_zylo_fd;
 int aud_fd;
+
 
 void updateBall(sprite *obj) {
 	obj->x += obj->dx;
@@ -230,26 +235,29 @@ int main()
 
 	aud_arg_t aat;
 	aud_mem_t amt;
-
+	vga_pixel_axis_t position;
+	vga_pixel_arg_t vla;
+	int i;
+	int** pixel_values;
 	srand(time(NULL));
 
-	static const char filename1[] = "/dev/vga_pixel";
+	static const char filename1[] = "/dev/vga_pixel";	
 	static const char filename2[] = "/dev/aud";
 
 	printf("VGA zylo test Userspace program started\n");
 	printf("%d\n", sizeof(int));	
 	printf("%d\n", sizeof(short));
 
-	if ((vga_zylo_fd = open(filename1, O_RDWR)) == -1) {
-		fprintf(stderr, "could not open %s\n", filename1);
+	printf("VGA PIXEL Userspace program started\n");
+
+	if ( (vga_pixel_fd = open(filename1, O_RDWR)) == -1) {
+		fprintf(stderr, "could not open %s\n", filename);
 		return -1;
 	}
 	if ((aud_fd = open(filename2, O_RDWR)) == -1) {
 		fprintf(stderr, "could not open %s\n", filename2);
 		return -1;
 	}
- 	//FILE *fp = fopen("test.txt", "w");
-	//if (fp == NULL)	return -1;
 	
 	sprite *sprites = NULL;	
 	sprites = calloc(SIZE, sizeof(*sprites));
@@ -268,27 +276,47 @@ int main()
     int max = 0;
     int hitcount = 0;
 	int noteCount = 0;  
-	int MAX_NOTE_COUNT = 100;    
+	int MAX_NOTE_COUNT = 100;
+	int posx,posy;    
 	FILE *file;
 
 	file = fopen("/root/cp/test/1.txt", "w");
+	printf("start.");
+  	pixel_values =  image_vga();
 
 	while (noteCount < MAX_NOTE_COUNT + 5) {
-                printf("%d\n", amt.data);
-                fprintf(file,"%d\n",amt.data);
-		if ((counter%132)==0) {
-		    noteCount++;}
-                amt.data = get_aud_data(aud_fd);
+        printf("%d\n", amt.data);
+        fprintf(file,"%d\n",amt.data);
 		
-	
-		//send_sprite_positions(&vzdt, vga_zylo_fd);
-		//update spirtes x and y based on dx and dy on software side
-		combo_flag = 1;
+        amt.data = get_aud_data(aud_fd);
 		//pause to let hardware catch up
+		if (amt.data > 160) amt.data = 0;
+		for (int i = 0; i < amt.data; i++){
+			pixel_values[i][counter] = 255;
+		}
 		counter++;
-		usleep(5000);
+		if (~(counter % 512) && counter){
+			for (int i = 0 ; i < 150 ; i++) {
+				position.y1_axis = i >> 8;
+				position.y2_axis = i % 256;
+				for (int j = 0; j < 640; j++) {
+					vga_pixel_color_t tmp;
+					tmp.red = pixel_values[i][j];
+					position.x1_axis = j >> 8;
+					position.x2_axis = j % 256;
+					set_background_color(&tmp);
+					set_pixel_axis(&position);
+				}
+			}
+		}
+		if (~(counter%512)) {
+			noteCount++;
+			posx = 0;
+			posy = 0;
+		}
+		usleep(500);
 	}
-        fclose(file);
+    fclose(file);
 	free (sprites);
 	return 0;
 }
